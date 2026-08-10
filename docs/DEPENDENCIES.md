@@ -25,10 +25,14 @@ per the instructions here, it is not vendored into this repo.
     absolute path in `ros2_ws/hesai_config/config_pandar40p.yaml` — update
     those paths after cloning if your workspace isn't at `/home/cave/ros2_ws`.
 
-## IMU driver (own repo, not vendored)
+## IMU driver (optional — own repo, not vendored)
 
 - [`tthom289/ros2_wheeltec_n100_imu`](https://github.com/tthom289/ros2_wheeltec_n100_imu)
-  — clone into `ros2_ws/src/`, `colcon build`.
+  — `slam_sensors.launch.py` still launches this node, but it's not required
+  for static-TLS scanning: the platform doesn't move during a scan, so there's
+  no motion to track and nothing downstream consumes `/imu`. Skip cloning it
+  and comment out the `wheeltec_n100_imu` `Node(...)` block in
+  `ros2_ws/src/hmi_bridge/launch/slam_sensors.launch.py` unless you need it.
 
 ## Motor/encoder firmware (own repo, not vendored)
 

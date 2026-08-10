@@ -54,8 +54,9 @@ after the fact with `tools/offline_deskew_pandar.py` — see `docs/DESKEW_CONTEX
 
 ## What's *not* in this repo
 
-- **Third-party drivers** (Hesai lidar driver + SDK, the IMU driver) — linked,
-  not vendored. See `docs/DEPENDENCIES.md` for exact pinned commits.
+- **Third-party drivers** (Hesai lidar driver + SDK; the IMU driver, optional
+  and not needed for static-TLS scanning) — linked, not vendored. See
+  `docs/DEPENDENCIES.md` for exact pinned commits.
 - **Teensy firmware** — separate public repo: `<TEENSY_FIRMWARE_REPO_URL>`
 - **ROS2 / Ubuntu itself** — installed per upstream instructions, see `docs/DEPENDENCIES.md`.
 - **Recorded bag data** — that's the rig's output, not the software.

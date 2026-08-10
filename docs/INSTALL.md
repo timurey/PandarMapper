@@ -25,6 +25,9 @@ ln -s ~/pi5-scanner/ros2_ws/hesai_config hesai_config
 # Third-party drivers (see docs/DEPENDENCIES.md for pinned commits)
 git clone --recurse-submodules \
   https://github.com/HesaiTechnology/HesaiLidar_ROS_2.0.git src/HesaiLidar_ROS_2.0
+# IMU driver is optional — not needed for static-TLS scanning, see docs/DEPENDENCIES.md.
+# Skip the clone below and comment out the wheeltec_n100_imu Node() in
+# hmi_bridge/launch/slam_sensors.launch.py unless you actually want IMU data.
 git clone https://github.com/tthom289/ros2_wheeltec_n100_imu.git src/ros2_wheeltec_n100_imu
 
 colcon build
