@@ -1,13 +1,7 @@
-# Phase 2c — STEP 3: give eth0 a STATIC IP on an ISOLATED lidar subnet.
-#
-# ►►► ALREADY DONE ON THIS PI: /etc/netplan/60-velodyne.yaml already sets
-#     eth0 -> 192.168.3.100/24 (dhcp4:no), left over from the VLP-16 which used
-#     the same subnet. So you likely DO NOT need to apply this file at all —
-#     just `sudo netplan apply` (or bring eth0 up) once the cable is linked and
-#     eth0 will hold 192.168.3.100. Keep the Pandar's dest IP = 192.168.3.100
-#     and its own IP on 192.168.3.x (the old VLP-16 lived at 192.168.3.201).
-#     This file is kept only as a self-contained fallback if 60-velodyne.yaml is
-#     ever removed.
+# STEP 3: give eth0 a STATIC IP on an ISOLATED lidar subnet.
+# (system/network/60-hesai-eth0.yaml in the repo root is the same file,
+# already installed — this copy lives alongside the other bring-up scripts
+# for reference.)
 #
 # WHY isolated 192.168.3.x and not the Pandar's factory 192.168.1.x:
 #   wlan0 already owns 192.168.1.0/24 (Pi = 192.168.1.205, the route to the
@@ -22,8 +16,8 @@
 #        #   and set the lidar's own IP to 192.168.3.201, save/reboot lidar.
 #        sudo ip addr del 192.168.1.100/24 dev eth0
 #   b) Install this file and apply:
-#        sudo cp 03_eth0_static_netplan.yaml /etc/netplan/60-lidar-eth0.yaml
-#        sudo chmod 600 /etc/netplan/60-lidar-eth0.yaml
+#        sudo cp 03_eth0_static_netplan.yaml /etc/netplan/60-hesai-eth0.yaml
+#        sudo chmod 600 /etc/netplan/60-hesai-eth0.yaml
 #        sudo netplan apply
 #   c) Verify: ip -br addr show eth0   (expect 192.168.3.100/24)
 #              ping -c2 192.168.3.201  (the lidar)

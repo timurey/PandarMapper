@@ -11,8 +11,7 @@ wifi-reachable web dashboard for control and recording. ROS2 underneath.
    Hesai Pandar 40P │   HesaiLidar_ROS_2.0  │  (third-party driver,
    (Ethernet/UDP) ──┤   driver node         │   not vendored — see
                     └──────────┬───────────┘   docs/DEPENDENCIES.md)
-                               │ /velodyne_points (remapped topic name,
-                               │  kept for zero-churn compat)
+                               │ /velodyne_points, frame `velodyne`
    Teensy 4.0 ──serial──┐      │
    (motor + encoder,    │      │
     firmware is its own │      │

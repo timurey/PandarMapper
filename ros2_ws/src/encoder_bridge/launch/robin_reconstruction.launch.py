@@ -4,8 +4,9 @@ Complete ROBIN-style reconstruction launch file
 
 Launches:
 1. Encoder bridge - reads platform angle from Teensy
-2. VLP-16 driver - captures LiDAR data
-3. Point cloud reconstructor - synchronizes and corrects point cloud for platform rotation
+2. Point cloud reconstructor - synchronizes and corrects point cloud for platform rotation
+
+(The lidar driver itself is launched separately — see hesai_config/hesai_pandar40p.launch.py.)
 """
 
 from launch import LaunchDescription
@@ -33,7 +34,7 @@ def generate_launch_description():
     use_per_point_time_arg = DeclareLaunchArgument(
         'use_per_point_time',
         default_value='true',
-        description='Use per-point timing from VLP-16 "time" field'
+        description='Use per-point timing from the point cloud "time" field'
     )
     rotation_axis_arg = DeclareLaunchArgument(
         'rotation_axis',

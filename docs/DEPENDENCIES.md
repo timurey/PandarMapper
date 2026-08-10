@@ -48,14 +48,6 @@ numpy==1.26.4
 ```
 (`rclpy` etc. come from the ROS2 install above, not pip.)
 
-## Known dropped-not-migrated
-
-- `open_vins` (rpng/open_vins) was cloned during early experimentation but
-  never wired into any launch file — not part of the working scanner, not
-  included here.
-- The original Velodyne VLP-16 driver package was fully replaced by the
-  Hesai Pandar 40P (2026-05-30) and is not part of this repo.
-
 ## Portability note
 
 A handful of files still have `/home/cave/...` absolute paths baked in

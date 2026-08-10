@@ -100,7 +100,6 @@ class HMIBridge(Node):
 
         # Recording state
         self.is_recording = False
-        self.recording_process = None  # legacy subprocess handle (no longer used)
         self.recording_start_time = None
         self.current_bag_name = None
         self.current_mode = None
@@ -384,7 +383,7 @@ class HMIBridge(Node):
             self.get_logger().info(f'Status: {status}', throttle_duration_sec=5.0)
 
     def start_sensors(self):
-        """Start all sensors (VLP-16 + IMU)"""
+        """Start all sensors (lidar + IMU)"""
         if self.sensors_running:
             self.get_logger().warn('Sensors already running')
             return False

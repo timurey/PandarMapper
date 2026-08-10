@@ -41,11 +41,3 @@ The platform spins about the Pandar's **Y axis** (Hesai datasheet convention:
 X=red, Y=yellow, Z=green — not the ROS/Foxglove R=X/G=Y/B=Z convention).
 This matters for the offline deskew tool (`tools/offline_deskew_pandar.py`) —
 see `docs/DESKEW_CONTEXT.md` for the full derivation.
-
-## No RTC
-
-There's no battery-backed RTC — the Pi's clock is NTP-only. The lidar and
-encoder are both timestamped on the system wall clock
-(`use_timestamp_type: 1`), so an NTP step mid-recording would corrupt both
-timelines. Not currently mitigated; worth confirming `timedatectl` shows
-`synchronized: yes` before a real recording.

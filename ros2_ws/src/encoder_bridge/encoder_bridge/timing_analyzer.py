@@ -2,7 +2,7 @@
 """
 Timing synchronization analyzer for ROBIN reconstruction.
 
-Reports encoder rate, VLP-16 rate, per-point time ranges, and latency.
+Reports encoder rate, lidar rate, per-point time ranges, and latency.
 """
 
 import rclpy
@@ -62,7 +62,7 @@ class TimingAnalyzer(Node):
         if 'time' in pts.dtype.names and len(pts) > 0:
             t = pts['time']
             self.get_logger().info(
-                f'[VLP-16] latency: {latency:.1f}ms  '
+                f'[lidar] latency: {latency:.1f}ms  '
                 f'time range: {t.min()*1000:.2f}..{t.max()*1000:.2f}ms  '
                 f'encoder_age: '
                 f'{(now - self.last_encoder_time).nanoseconds/1e6:.1f}ms'

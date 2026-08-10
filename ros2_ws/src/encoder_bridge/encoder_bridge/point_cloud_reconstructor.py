@@ -2,7 +2,7 @@
 """
 Point Cloud Reconstructor for ROBIN-style rotating platform LiDAR
 
-Synchronizes VLP-16 point cloud data with rotating platform encoder angles
+Synchronizes lidar point cloud data with rotating platform encoder angles
 to create dense 3D reconstructions by accounting for platform rotation.
 """
 
@@ -17,7 +17,7 @@ import traceback
 import yaml
 
 
-# Sensor-compatible QoS: matches typical VLP-16 driver output
+# Sensor-compatible QoS: matches typical spinning-lidar driver output
 SENSOR_QOS = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
     durability=DurabilityPolicy.VOLATILE,

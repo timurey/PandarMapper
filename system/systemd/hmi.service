@@ -6,9 +6,8 @@ After=network.target
 Type=simple
 User=cave
 WorkingDirectory=/home/cave/hmi
-# B-fix 2026-05-15: explicitly set RMW so app.py's subprocess.Popen children
-# (ros2 topic hz, ros2 bag record) inherit the same DDS implementation as
-# hmi_bridge. Backup at /etc/systemd/system/hmi.service.bak.20260515_113154
+# RMW must match hmi_bridge.service — app.py's subprocess.Popen children
+# (ros2 topic hz, ros2 bag record) need the same DDS implementation.
 Environment="ROS_DOMAIN_ID=0"
 Environment="RMW_IMPLEMENTATION=rmw_fastrtps_cpp"
 ExecStart=/home/cave/hmi/start.sh

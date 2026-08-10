@@ -2,8 +2,8 @@
 """
 Offline deskewing of Hesai Pandar 40P point clouds using platform encoder angles.
 
-Differences from the old VLP-16 guide (offline_deskew_guide.md) — all are required
-for the Pandar + 1:1 direct-drive setup:
+Key facts for the Pandar + 1:1 direct-drive setup (see docs/DESKEW_CONTEXT.md
+for the full derivation):
 
   1. Per-point time field is 'timestamp' (FLOAT64), NOT 'time'. Hesai's value is an
      ABSOLUTE host-clock time in seconds (use_timestamp_type:1 → gettimeofday at packet

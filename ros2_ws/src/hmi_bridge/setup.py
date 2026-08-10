@@ -18,7 +18,7 @@ setup(
     zip_safe=True,
     maintainer='tthom',
     maintainer_email='tthom289@users.noreply.github.com',
-    description='HMI Bridge for handheld SLAM system with ESP32 display',
+    description='Sensor orchestration and rosbag2 recording bridge for the Pi 5 scanner',
     license='MIT',
     extras_require={
         'test': [

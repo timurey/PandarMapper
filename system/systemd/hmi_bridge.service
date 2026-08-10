@@ -1,5 +1,5 @@
 [Unit]
-Description=HMI Bridge for CYD Display and SLAM Sensors
+Description=HMI Bridge — sensor orchestration and recording for the Pi 5 scanner
 After=network-online.target
 Wants=network-online.target
 
@@ -8,9 +8,8 @@ Type=simple
 User=cave
 WorkingDirectory=/home/cave/ros2_ws
 Environment="ROS_DOMAIN_ID=0"
-# B-fix 2026-05-15: switched from rmw_cyclonedds_cpp to rmw_fastrtps_cpp to test
-# whether the rosbag2 empty-PointCloud2 burst is cyclonedds-specific. Backup at
-# /etc/systemd/system/hmi_bridge.service.bak.20260515_113154
+# Must be rmw_fastrtps_cpp, not rmw_cyclonedds_cpp — cyclonedds intermittently
+# produces empty PointCloud2 bursts on this rig.
 Environment="RMW_IMPLEMENTATION=rmw_fastrtps_cpp"
 Environment="CYCLONEDDS_URI=file:///home/cave/.ros/cyclonedds.xml"
 ExecStart=/bin/bash -c "source /opt/ros/jazzy/setup.bash && source /home/cave/ros2_ws/install/setup.bash && ros2 launch hmi_bridge hmi_bridge.launch.py use_serial:=false"

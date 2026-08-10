@@ -1,5 +1,5 @@
 #!/bin/bash
-# Phase 2c — STEP 2: learn the Pandar's IP + the UDP destination it streams to,
+# STEP 2: learn the Pandar's IP + the UDP destination it streams to,
 # WITHOUT yet assigning the Pi a fixed IP. Pandar blasts UDP 2368 regardless of
 # whether the Pi has a matching address, so we can sniff it raw.
 #
@@ -14,8 +14,9 @@ sudo timeout 6 tcpdump -ni "$IFACE" -c 8 'udp port 2368' 2>/dev/null \
 echo
 echo "If you saw a 'lidar=...' line: that is the Pandar's current IP/subnet."
 echo "  - Default factory IP is 192.168.1.201 streaming to 192.168.1.100."
-echo "  - This Pi's eth0 is ALREADY at 192.168.3.100/24 (from old VLP-16 netplan"
-echo "    60-velodyne.yaml). Target setup: Pandar IP 192.168.3.201, dest 192.168.3.100."
+echo "  - This Pi's eth0 should be static at 192.168.3.100/24 (see"
+echo "    system/network/60-hesai-eth0.yaml). Target setup: Pandar IP 192.168.3.201,"
+echo "    dest 192.168.3.100."
 echo "  - dest is the address the Pi must hold to receive (or 255.255.255.255 broadcast)."
 echo
 echo "If you saw NOTHING: either link/cabling is bad, or the lidar streams to a"

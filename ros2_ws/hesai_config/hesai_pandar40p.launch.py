@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """
-Hesai Pandar 40P bring-up launch (migration/hesai-web).
+Hesai Pandar 40P bring-up launch.
 
-Replaces the Velodyne VLP-16 driver. Publishes the cloud on /velodyne_points
-with frame_id 'velodyne' (see config_pandar40p.yaml) so every downstream
-consumer — hmi/app.py recorder, hmi_bridge, ROBIN deskew, TF — keeps working
-unchanged.
+Publishes the cloud on /velodyne_points with frame_id 'velodyne' (see
+config_pandar40p.yaml) so every downstream consumer — hmi/app.py recorder,
+hmi_bridge, ROBIN deskew, TF — uses one consistent topic/frame name.
 
 Run standalone:
     ros2 launch /home/cave/ros2_ws/hesai_config/hesai_pandar40p.launch.py
 
-Eventually included by slam_sensors.launch.py in place of the velodyne include.
+Included by slam_sensors.launch.py.
 """
 import os
 from launch import LaunchDescription

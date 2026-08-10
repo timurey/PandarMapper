@@ -25,11 +25,9 @@ app = Flask(__name__)
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 TOPICS = {
-    # 'Velodyne': '/velodyne_points',  # disabled — see commit history; Hz now comes
-    #                                  # from hmi_bridge in-process, not subprocess.
+    # Lidar Hz is reported by hmi_bridge in-process, not tracked here.
     'IMU':       '/imu',
     'Encoder':   '/rotating_platform/angle',
-    # OAK topics removed 2026-05-15 — project no longer uses the OAK-D path.
 }
 
 # Topics recorded per mode

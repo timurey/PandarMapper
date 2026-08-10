@@ -3,7 +3,7 @@
 <package format="3">
   <name>hmi_bridge</name>
   <version>0.0.0</version>
-  <description>HMI Bridge for handheld SLAM system with ESP32 display</description>
+  <description>Sensor orchestration and rosbag2 recording bridge for the Pi 5 scanner</description>
   <maintainer email="tthom289@users.noreply.github.com">tthom</maintainer>
   <license>MIT</license>
 

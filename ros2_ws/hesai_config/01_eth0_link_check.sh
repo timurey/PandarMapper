@@ -1,5 +1,5 @@
 #!/bin/bash
-# Phase 2c — STEP 1: confirm the Pi <-> Pandar physical Ethernet link.
+# STEP 1: confirm the Pi <-> Pandar physical Ethernet link.
 # Run this FIRST. If it fails, it is a cabling/power/port problem, not software.
 set -u
 echo "=== eth0 link state ==="

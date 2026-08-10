@@ -55,7 +55,7 @@ lidar:
       # clock — the SAME clock the encoder node uses (get_clock().now()). This is
       # what makes lidar<->encoder deskew align without an RTC or PTP. Do NOT set
       # 0 here: that uses the lidar's internal clock (reads year-2000 with no PTP)
-      # and would desync from the encoder. (migration/hesai-web 2026-05-30)
+      # and would desync from the encoder.
       use_timestamp_type: 1
       frame_start_azimuth: 0
       thread_num: 4
@@ -80,8 +80,8 @@ lidar:
       echo_mode_filter: 0
 
     ros:
-      # ── MIGRATION DECISION: keep VLP-16 topic + frame so all downstream
-      #    (hmi/app.py RECORD_TOPICS, hmi_bridge recorder, ROBIN deskew, TF) is unchanged.
+      # Topic/frame names are shared by hmi/app.py RECORD_TOPICS, hmi_bridge's
+      # recorder, ROBIN deskew, and TF — keep them in sync if you rename these.
       ros_frame_id: velodyne
       ros_recv_packet_topic: /lidar_packets
       ros_send_packet_topic: /lidar_packets
