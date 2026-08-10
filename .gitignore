@@ -1,0 +1,19 @@
+# ROS2 build artifacts
+build/
+install/
+log/
+.ros_log/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Bag files / recordings
+*.db3
+*.mcap
+*.bag
+
+# OS / editor
+.DS_Store
+*.swp
+*~

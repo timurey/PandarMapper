@@ -1,0 +1,40 @@
+# Phase 2c — STEP 3: give eth0 a STATIC IP on an ISOLATED lidar subnet.
+#
+# ►►► ALREADY DONE ON THIS PI: /etc/netplan/60-velodyne.yaml already sets
+#     eth0 -> 192.168.3.100/24 (dhcp4:no), left over from the VLP-16 which used
+#     the same subnet. So you likely DO NOT need to apply this file at all —
+#     just `sudo netplan apply` (or bring eth0 up) once the cable is linked and
+#     eth0 will hold 192.168.3.100. Keep the Pandar's dest IP = 192.168.3.100
+#     and its own IP on 192.168.3.x (the old VLP-16 lived at 192.168.3.201).
+#     This file is kept only as a self-contained fallback if 60-velodyne.yaml is
+#     ever removed.
+#
+# WHY isolated 192.168.3.x and not the Pandar's factory 192.168.1.x:
+#   wlan0 already owns 192.168.1.0/24 (Pi = 192.168.1.205, the route to the
+#   internet + the dashboard). Putting eth0 on the same /24 creates two
+#   interfaces on one subnet => ambiguous routing. So the lidar gets its own
+#   subnet that only exists on the wired link.
+#
+# PROCEDURE (web UI step needs temporary same-subnet access):
+#   a) Temporarily set eth0 to the Pandar's CURRENT subnet to reach its web UI:
+#        sudo ip addr add 192.168.1.100/24 dev eth0     # if lidar is at .201 default
+#        # browse http://192.168.1.201  -> set Destination IP 192.168.3.100,
+#        #   and set the lidar's own IP to 192.168.3.201, save/reboot lidar.
+#        sudo ip addr del 192.168.1.100/24 dev eth0
+#   b) Install this file and apply:
+#        sudo cp 03_eth0_static_netplan.yaml /etc/netplan/60-lidar-eth0.yaml
+#        sudo chmod 600 /etc/netplan/60-lidar-eth0.yaml
+#        sudo netplan apply
+#   c) Verify: ip -br addr show eth0   (expect 192.168.3.100/24)
+#              ping -c2 192.168.3.201  (the lidar)
+#
+# NOTE: leaves 50-cloud-init.yaml (wlan0 + eth0 dhcp4) in place; this file only
+# overrides eth0. If both define eth0, the lexically-later filename wins — 60- > 50-.
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: false
+      addresses:
+        - 192.168.3.100/24
+      # No gateway/nameservers here on purpose — internet stays on wlan0.
