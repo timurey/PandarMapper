@@ -6,10 +6,12 @@ from rclpy.qos import qos_profile_sensor_data
 from rclpy.serialization import serialize_message
 from sensor_msgs.msg import PointCloud2, Imu, JointState
 from std_msgs.msg import String, Float64
+from std_srvs.srv import Trigger
 from rosbag2_py import SequentialWriter, StorageOptions, ConverterOptions, TopicMetadata
 import json
 import serial
 import threading
+import time
 import subprocess
 import os
 import shutil
@@ -42,8 +44,8 @@ class HMIBridge(Node):
         # Declare parameters
         self.declare_parameter('serial_port', '/dev/ttyAMA0')
         self.declare_parameter('baud_rate', 115200)
-        self.declare_parameter('use_serial', True)
-        self.declare_parameter('bag_directory', '/home/cave/rosbags')
+        self.declare_parameter('use_serial', False)
+        self.declare_parameter('bag_directory', '/home/openclaw/bags')
 
         # Get parameters
         self.serial_port = self.get_parameter('serial_port').value
@@ -156,6 +158,10 @@ class HMIBridge(Node):
             10
         )
 
+        # Spin controller service clients
+        self._spin_start = self.create_client(Trigger, '/spin_controller/start')
+        self._spin_stop  = self.create_client(Trigger, '/spin_controller/stop')
+
         # Command interface for the Flask HMI (app.py).
         # Eliminates the prior pattern of spawning `ros2 bag record` as a subprocess
         # — instead, app.py publishes JSON commands here and we drive the in-process
@@ -192,14 +198,15 @@ class HMIBridge(Node):
 
         self.get_logger().info('HMI Bridge node started')
 
-        # Auto-start sensors on boot
+        # Auto-start sensors on boot (2 s delay to let ROS graph settle)
         self.create_timer(2.0, self.auto_start_sensors_once)
+        self.get_logger().info('HMI Bridge node started — sensors will auto-start in 2 s')
 
     def auto_start_sensors_once(self):
         """Auto-start sensors on boot (runs once after 2 second delay)"""
-        self.destroy_timer(self.get_clock().now())  # Cancel this timer
+        self.destroy_timer(self.get_clock().now())
         if not self.sensors_running:
-            self.get_logger().info('Auto-starting sensors...')
+            self.get_logger().info('Auto-starting sensor stack...')
             self.start_sensors()
 
     def _write_to_bag(self, topic, msg, ts_ns):
@@ -347,8 +354,8 @@ class HMIBridge(Node):
             'encoder_angle': round(self.encoder_angle, 1),
             'lidar_raw_ok': self.lidar_raw_hz > 5.0,
         # 'lidar_corrected_ok': self.lidar_corrected_hz > 5.0,
-            'imu_ok': self.imu_hz > 100.0,
-            'encoder_ok': self.encoder_hz > 100.0,  # Teensy publishes at 200 Hz
+            'imu_ok': self.imu_hz > 8.0,   # ybimu_driver publishes at 10 Hz (timer-driven)
+            'encoder_ok': self.encoder_hz > 80.0,   # spin_controller publishes at ~100 Hz
             'recording': self.is_recording,
             'disk_gb': round(self.get_disk_space(), 1),
             'rec_duration': self.get_recording_duration(),
@@ -383,28 +390,23 @@ class HMIBridge(Node):
             self.get_logger().info(f'Status: {status}', throttle_duration_sec=5.0)
 
     def start_sensors(self):
-        """Start all sensors (lidar + IMU)"""
+        """Start all sensors via slam_scanner.launch.py (VLP-16 + IMU + spin_controller)."""
         if self.sensors_running:
             self.get_logger().warn('Sensors already running')
             return False
 
-        # Get path to sensor launch file
         from ament_index_python.packages import get_package_share_directory
         launch_file = os.path.join(
-            get_package_share_directory('hmi_bridge'),
+            get_package_share_directory('slam_bringup'),
             'launch',
-            'slam_sensors.launch.py'
+            'slam_scanner.launch.py'
         )
 
-        # Start sensors via ros2 launch
-        cmd = ['ros2', 'launch', launch_file]
+        cmd = ['ros2', 'launch', launch_file, 'with_velodyne:=true']
 
         try:
-            # stdout/stderr -> DEVNULL. The launched drivers — especially the Hesai node,
-            # which prints a 'frame:' line every ~100ms — would otherwise fill the 64KB OS
-            # pipe buffer in ~90s with NO reader draining it. The driver's next write()
-            # then blocks, freezing its publish/parse thread and hanging the lidar at 0 Hz
-            # (process stays alive). Discarding the output removes that deadlock entirely.
+            # stdout/stderr → DEVNULL: the VLP-16 driver prints at high frequency,
+            # filling the 64KB OS pipe buffer and blocking its publish thread.
             self.sensors_process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.DEVNULL,
@@ -413,7 +415,7 @@ class HMIBridge(Node):
             self.sensors_running = True
             self.sensors_grace_ticks = 25   # arm lidar watchdog only after driver warmup
             self.lidar_zero_ticks = 0
-            self.get_logger().info('Started sensors (Hesai Pandar + IMU)')
+            self.get_logger().info('Started sensors (VLP-16 + IMU + spin_controller)')
             return True
         except Exception as e:
             self.get_logger().error(f'Failed to start sensors: {e}')
@@ -454,8 +456,23 @@ class HMIBridge(Node):
             self.get_logger().error(f'Failed to stop sensors: {e}')
             return False
 
+    def _call_spin(self, client, name: str, timeout: float = 8.0) -> bool:
+        """Call a spin_controller Trigger service from a background thread."""
+        if not client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().warn(f'spin_controller/{name} not available')
+            return False
+        future = client.call_async(Trigger.Request())
+        deadline = time.time() + timeout
+        while not future.done() and time.time() < deadline:
+            time.sleep(0.05)
+        if not future.done():
+            self.get_logger().error(f'spin_controller/{name} timed out')
+            return False
+        result = future.result()
+        return result.success
+
     def start_recording(self, bag_name=None, mode='static'):
-        """Start in-process rosbag2 recording via SequentialWriter.
+        """Start platform rotation, wait 2 s for speed, then start in-process rosbag2 recording.
         Replaces the previous spawn of `ros2 bag record` so that the bag's
         subscribers are this very node — no DDS subscribe/unsubscribe cycle
         per recording, which is what was triggering the empty-PointCloud2 burst.
@@ -533,21 +550,25 @@ class HMIBridge(Node):
                 self.is_recording = False
                 self.recording_start_time = None
                 self.get_logger().info(f'In-process recording stopped: {name}')
-                return True, 'ok', name
             except Exception as e:
                 self._writer = None
                 self.is_recording = False
                 self.recording_start_time = None
                 self.get_logger().error(f'Error stopping in-process writer: {e}')
+                # Still stop motor even on error
+                self._call_spin(self._spin_stop, 'stop', timeout=3.0)
                 return False, str(e), name
+
+        # Stop platform rotation after bag is closed
+        self.get_logger().info('Stopping platform rotation...')
+        self._call_spin(self._spin_stop, 'stop', timeout=3.0)
+        return True, 'ok', name
 
     def _on_cmd(self, msg):
         """JSON command interface from app.py (Flask HMI).
-        Accepts:
-          {"action":"start_record","mode":"static","name":"static_..._<ts>"}
-          {"action":"stop_record"}
-        Replies on /hmi_bridge/response with {"action":..., "ok":bool,
-        "msg":str, "name":str|null}."""
+        Recording commands are dispatched to a background thread so that
+        _call_spin (which blocks on a service future) does not deadlock the
+        single-threaded ROS executor."""
         try:
             cmd = json.loads(msg.data)
         except Exception as e:
@@ -556,18 +577,34 @@ class HMIBridge(Node):
 
         action = cmd.get('action') or cmd.get('cmd')
         if action == 'start_record':
-            ok, m, name = self.start_recording(
-                bag_name=cmd.get('name'),
-                mode=cmd.get('mode', 'static'),
-            )
-            self._publish_response('start_record', ok, m, name)
+            threading.Thread(
+                target=self._start_record_thread,
+                args=(cmd.get('name'), cmd.get('mode', 'static')),
+                daemon=True,
+            ).start()
         elif action == 'stop_record':
-            ok, m, name = self.stop_recording()
-            self._publish_response('stop_record', ok, m, name)
+            threading.Thread(
+                target=self._stop_record_thread,
+                daemon=True,
+            ).start()
         elif action == 'ping':
             self._publish_response('ping', True, 'pong', None)
         else:
             self.get_logger().warn(f'Unknown /hmi_bridge/cmd action: {action!r}')
+
+    def _start_record_thread(self, bag_name, mode):
+        """Background thread: start motor → wait → open bag → publish response."""
+        self.get_logger().info('Starting platform rotation...')
+        self._call_spin(self._spin_start, 'start', timeout=8.0)
+        self.get_logger().info('Waiting 2 s for platform to reach speed...')
+        time.sleep(2.0)
+        ok, m, name = self.start_recording(bag_name=bag_name, mode=mode)
+        self._publish_response('start_record', ok, m, name)
+
+    def _stop_record_thread(self):
+        """Background thread: close bag → stop motor → publish response."""
+        ok, m, name = self.stop_recording()
+        self._publish_response('stop_record', ok, m, name)
 
     def _publish_response(self, action, ok, msg_str, name):
         out = String()
