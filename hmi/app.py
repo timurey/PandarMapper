@@ -13,6 +13,8 @@ import os
 import time
 import json
 import psutil
+import urllib.request
+import urllib.error
 import rclpy
 from rclpy.executors import SingleThreadedExecutor
 from std_msgs.msg import String as StringMsg
@@ -64,6 +66,8 @@ BAG_DIR       = '/home/openclaw/bags'
 BAG_TRASH_DIR = '/home/openclaw/bags_trash'  # discarded bags moved here, never rm -rf'd
 ROS_SETUP    = '/opt/ros/jazzy/setup.bash'
 WS_SETUP     = os.path.expanduser('~/ros2_ws/install/setup.bash')
+VELODYNE_IP  = '192.168.100.201'   # VLP-16 built-in HTTP interface
+VELODYNE_SPINDLE_RPM = 600         # RPM used when turning spindle on
 HZ_WINDOW    = 5   # samples for ros2 topic hz rolling window
 DEAD_AFTER   = 4.0 # seconds with no update → mark as dead
 
@@ -71,6 +75,53 @@ DEAD_AFTER   = 4.0 # seconds with no update → mark as dead
 SPIN_START_SRV   = '/spin_controller/start'
 SPIN_STOP_SRV    = '/spin_controller/stop'
 SPIN_RPM_TOPIC   = '/spin_controller/target_rpm'
+
+
+# ── VLP-16 Spindle Control ───────────────────────────────────────────────────
+
+_spindle_rpm_cache: int | None = None   # None = unknown (never queried yet)
+_spindle_cache_time: float = 0.0
+_SPINDLE_CACHE_TTL = 5.0               # re-query lidar at most every 5 s
+
+
+def get_lidar_spindle_rpm() -> int | None:
+    """Query the VLP-16 web interface for current motor RPM. Returns None on error."""
+    global _spindle_rpm_cache, _spindle_cache_time
+    now = time.monotonic()
+    if _spindle_rpm_cache is not None and (now - _spindle_cache_time) < _SPINDLE_CACHE_TTL:
+        return _spindle_rpm_cache
+    try:
+        url = f'http://{VELODYNE_IP}/cgi/settings.json'
+        with urllib.request.urlopen(url, timeout=2) as resp:
+            data = json.loads(resp.read())
+        rpm = int(data.get('rpm', data.get('motor', {}).get('rpm', -1)))
+        _spindle_rpm_cache = rpm
+        _spindle_cache_time = now
+        return rpm
+    except Exception:
+        return _spindle_rpm_cache  # return stale value rather than None if available
+
+
+def set_lidar_spindle(on: bool) -> tuple[bool, str]:
+    """Set VLP-16 spindle RPM to VELODYNE_SPINDLE_RPM (on) or 0 (off).
+    VLP-16 HTTP API: POST /cgi/setting with form body rpm=<value>."""
+    global _spindle_rpm_cache, _spindle_cache_time
+    target_rpm = VELODYNE_SPINDLE_RPM if on else 0
+    try:
+        url = f'http://{VELODYNE_IP}/cgi/setting'
+        data = f'rpm={target_rpm}'.encode()
+        req = urllib.request.Request(url, data=data,
+                                     headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                                     method='POST')
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            resp.read()
+        _spindle_rpm_cache = target_rpm
+        _spindle_cache_time = time.monotonic()
+        return True, f'Spindle {"started" if on else "stopped"} ({target_rpm} RPM)'
+    except urllib.error.URLError as e:
+        return False, f'VLP-16 unreachable: {e.reason}'
+    except Exception as e:
+        return False, str(e)
 
 
 # ── Hz Monitor ───────────────────────────────────────────────────────────────
@@ -556,18 +607,19 @@ def status():
     rec_duration = bridge.get('rec_duration', 0) if is_recording else 0
     bag_name = bridge.get('bag_name') or recorder.bag_name
     return jsonify({
-        'hz':            hz,
-        'encoder_angle': angle_mon.get(),
-        'platform_rpm':  vel_mon.get(),
-        'disk':          get_disk(),
-        'system':        get_system(),
-        'recording':     is_recording,
-        'rec_duration':  rec_duration,
-        'bag_name':      bag_name,
-        'mode':          recorder.mode,
-        'pending_bag':   recorder.pending_bag,
-        'pending_mode':  recorder.pending_mode,
-        'topic_modes':   TOPIC_MODES,
+        'hz':               hz,
+        'encoder_angle':    angle_mon.get(),
+        'platform_rpm':     vel_mon.get(),
+        'disk':             get_disk(),
+        'system':           get_system(),
+        'recording':        is_recording,
+        'rec_duration':     rec_duration,
+        'bag_name':         bag_name,
+        'mode':             recorder.mode,
+        'pending_bag':      recorder.pending_bag,
+        'pending_mode':     recorder.pending_mode,
+        'topic_modes':      TOPIC_MODES,
+        'lidar_spindle_rpm': get_lidar_spindle_rpm(),
     })
 
 
@@ -849,6 +901,17 @@ def api_bag_preview(name):
     resp.headers['X-Rotations-Captured']   = str(result['rotations_captured'])
     resp.headers['X-Compute-S']            = str(result['compute_s'])
     return resp
+
+
+@app.route('/api/lidar/spindle', methods=['GET', 'POST'])
+def lidar_spindle():
+    if request.method == 'GET':
+        rpm = get_lidar_spindle_rpm()
+        return jsonify({'ok': rpm is not None, 'rpm': rpm, 'on': (rpm or 0) > 0})
+    body = request.get_json(silent=True) or {}
+    on = bool(body.get('on', True))
+    ok, msg = set_lidar_spindle(on)
+    return jsonify({'ok': ok, 'msg': msg, 'rpm': _spindle_rpm_cache})
 
 
 @app.route('/api/motor/cmd', methods=['POST'])

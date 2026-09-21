@@ -214,6 +214,10 @@
     .btn-ctrl:active { transform: scale(0.95); opacity: 0.8; }
     .btn-all { background: #180800; color: #aa4400; border: 1px solid #3a1500; }
     html.light .btn-all { background: #ffe8dd; color: #882200; border-color: #cc6600; }
+    .btn-spindle-on  { background: #001a14; color: #00bb77; border: 1px solid #004433; }
+    .btn-spindle-off { background: #120018; color: #9966cc; border: 1px solid #330044; }
+    html.light .btn-spindle-on  { background: #ccffe8; color: #005533; border-color: #009955; }
+    html.light .btn-spindle-off { background: #eeddf7; color: #440066; border-color: #8844aa; }
     .ctrl-msg { font-size: 0.58em; color: var(--text4); min-height: 14px; text-align: center; flex-shrink: 0; }
 
     /* Rec status */
@@ -477,6 +481,7 @@
       <div class="lbl">Sensor Control</div>
       <div class="ctrl-row">
         <button class="btn-ctrl btn-all" onclick="restartAll()">&#8635; All Sensors</button>
+        <button class="btn-ctrl btn-spindle-off" id="btn-spindle" onclick="toggleSpindle()">&#9654; Spindle</button>
       </div>
       <div class="ctrl-msg" id="ctrl-msg"></div>
 
@@ -779,6 +784,7 @@
       renderSystem(d.system);
       renderRec(d.recording, d.bag_name, d.rec_duration);
       updateMotorRpm(d.platform_rpm ?? null);
+      renderSpindle(d.lidar_spindle_rpm ?? null);
       // Post-stop bag finalization modal — driven by server's pending_bag
       if (d.pending_bag) showRecModal(d.pending_bag);
       else if (_recModalShownFor) hideRecModal();
@@ -850,6 +856,43 @@
     showCtrl('Restarting all sensors...', true);
     try { const r = await fetch('/api/sensors/restart_all', {method:'POST'}); const d = await r.json(); showCtrl(d.msg, d.ok); }
     catch(e) { showCtrl('Failed', false); }
+  }
+
+  // ── Lidar spindle ──────────────────────────────────────────────────────────
+  let _spindleOn = null;  // null = unknown
+
+  function renderSpindle(rpm) {
+    const on = rpm !== null && rpm > 0;
+    if (_spindleOn === on) return;
+    _spindleOn = on;
+    const btn = document.getElementById('btn-spindle');
+    if (on) {
+      btn.className = 'btn-ctrl btn-spindle-on';
+      btn.innerHTML = '&#9646;&#9646; Spindle';
+      btn.title = `Spindle running at ${rpm} RPM — click to stop`;
+    } else {
+      btn.className = 'btn-ctrl btn-spindle-off';
+      btn.innerHTML = '&#9654; Spindle';
+      btn.title = 'Spindle stopped — click to start';
+    }
+  }
+
+  async function toggleSpindle() {
+    const on = !_spindleOn;
+    renderSpindle(on ? 1 : 0);  // optimistic
+    try {
+      const r = await fetch('/api/lidar/spindle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ on }),
+      });
+      const d = await r.json();
+      showCtrl(d.msg, d.ok);
+      if (d.rpm !== undefined) renderSpindle(d.rpm);
+    } catch(e) {
+      showCtrl('Spindle command failed', false);
+      renderSpindle(_spindleOn ? 1 : 0);  // revert
+    }
   }
 
   // ── Shutdown ───────────────────────────────────────────────────────────
