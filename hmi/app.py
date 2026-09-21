@@ -9,12 +9,13 @@ import subprocess
 import threading
 import re
 import shutil
-import os
 import time
 import json
 import psutil
 import urllib.request
 import urllib.error
+import signal
+import os
 import rclpy
 from rclpy.executors import SingleThreadedExecutor
 from std_msgs.msg import String as StringMsg
@@ -75,6 +76,43 @@ DEAD_AFTER   = 4.0 # seconds with no update → mark as dead
 SPIN_START_SRV   = '/spin_controller/start'
 SPIN_STOP_SRV    = '/spin_controller/stop'
 SPIN_RPM_TOPIC   = '/spin_controller/target_rpm'
+
+
+# ── Subprocess registry — kill on exit ──────────────────────────────────────
+# All long-lived Popen children register here so SIGTERM kills them promptly,
+# preventing systemd from waiting the full TimeoutStopSec for the cgroup to drain.
+
+_child_procs: list[subprocess.Popen] = []
+_child_lock = threading.Lock()
+
+
+def _register_proc(proc: subprocess.Popen) -> subprocess.Popen:
+    with _child_lock:
+        _child_procs.append(proc)
+    return proc
+
+
+def _kill_all_children():
+    with _child_lock:
+        procs = list(_child_procs)
+    for proc in procs:
+        try:
+            # start_new_session=True makes proc.pid the process-group leader,
+            # so killpg kills bash + the ros2 child it exec'd.
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+
+def _sigterm_handler(signum, frame):
+    _kill_all_children()
+    raise SystemExit(0)
+
+
+signal.signal(signal.SIGTERM, _sigterm_handler)
 
 
 # ── VLP-16 Spindle Control ───────────────────────────────────────────────────
@@ -145,13 +183,13 @@ class HzMonitor:
         pattern = re.compile(r'average rate:\s*([\d.]+)')
         while True:
             try:
-                proc = subprocess.Popen(
+                proc = _register_proc(subprocess.Popen(
                     f'source {ROS_SETUP} && source {WS_SETUP} && '
                     f'ros2 topic hz --window {HZ_WINDOW} {topic}',
                     shell=True, executable='/bin/bash',
                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                    text=True
-                )
+                    text=True, start_new_session=True,
+                ))
                 for line in proc.stdout:
                     m = pattern.search(line)
                     if m:
@@ -197,13 +235,13 @@ class AngleMonitor:
         pattern = re.compile(r'^data:\s*([\d.eE+\-]+)')
         while True:
             try:
-                proc = subprocess.Popen(
+                proc = _register_proc(subprocess.Popen(
                     f'source {ROS_SETUP} && source {WS_SETUP} && '
                     f'ros2 topic echo --no-daemon {self._topic}',
                     shell=True, executable='/bin/bash',
                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                    text=True
-                )
+                    text=True, start_new_session=True,
+                ))
                 for line in proc.stdout:
                     m = pattern.match(line.strip())
                     if m:
@@ -244,13 +282,13 @@ class VelocityMonitor:
         pattern = re.compile(r'^data:\s*([\d.eE+\-]+)')
         while True:
             try:
-                proc = subprocess.Popen(
+                proc = _register_proc(subprocess.Popen(
                     f'source {ROS_SETUP} && source {WS_SETUP} && '
                     f'ros2 topic echo --no-daemon {self._topic}',
                     shell=True, executable='/bin/bash',
                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                    text=True
-                )
+                    text=True, start_new_session=True,
+                ))
                 for line in proc.stdout:
                     m = pattern.match(line.strip())
                     if m:
