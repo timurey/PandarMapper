@@ -4,13 +4,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=cave
-WorkingDirectory=/home/cave/hmi
+User=openclaw
+WorkingDirectory=/home/openclaw/hmi
 # RMW must match hmi_bridge.service — app.py's subprocess.Popen children
 # (ros2 topic hz, ros2 bag record) need the same DDS implementation.
 Environment="ROS_DOMAIN_ID=0"
 Environment="RMW_IMPLEMENTATION=rmw_fastrtps_cpp"
-ExecStart=/home/cave/hmi/start.sh
+ExecStart=/home/openclaw/hmi/start.sh
 Restart=always
 RestartSec=5
 StandardOutput=journal

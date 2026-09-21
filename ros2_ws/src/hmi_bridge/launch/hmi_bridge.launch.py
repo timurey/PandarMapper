@@ -23,7 +23,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'bag_directory',
-            default_value='/home/cave/rosbags',
+            default_value='/home/openclaw/bags',
             description='Directory to store rosbag recordings'
         ),
 
