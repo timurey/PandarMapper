@@ -13,7 +13,6 @@ import os
 import time
 import json
 import psutil
-import serial
 import rclpy
 from rclpy.executors import SingleThreadedExecutor
 from std_msgs.msg import String as StringMsg
@@ -61,14 +60,17 @@ THRESHOLDS = {
     'Encoder':   (150, 50),
 }
 
-BAG_DIR       = '/home/cave/rosbags'
-BAG_TRASH_DIR = '/home/cave/rosbags_trash'  # discarded bags moved here, never rm -rf'd
+BAG_DIR       = '/home/openclaw/bags'
+BAG_TRASH_DIR = '/home/openclaw/bags_trash'  # discarded bags moved here, never rm -rf'd
 ROS_SETUP    = '/opt/ros/jazzy/setup.bash'
 WS_SETUP     = os.path.expanduser('~/ros2_ws/install/setup.bash')
 HZ_WINDOW    = 5   # samples for ros2 topic hz rolling window
 DEAD_AFTER   = 4.0 # seconds with no update → mark as dead
-TEENSY_PORT  = '/dev/ttyTeensy'
-TEENSY_BAUD  = 115200
+
+# spin_controller ROS services / topics
+SPIN_START_SRV   = '/spin_controller/start'
+SPIN_STOP_SRV    = '/spin_controller/stop'
+SPIN_RPM_TOPIC   = '/spin_controller/target_rpm'
 
 
 # ── Hz Monitor ───────────────────────────────────────────────────────────────
@@ -343,7 +345,7 @@ class BagRecorder:
             if ros_coord is None:
                 return False, 'ROS coordinator not initialized'
             resp = ros_coord.call(
-                'start_record', timeout=5.0,
+                'start_record', timeout=15.0,  # motor start + 2s wait + bag open
                 mode=mode, name=proposed_name
             )
             if resp is None:
@@ -359,9 +361,10 @@ class BagRecorder:
 
     def stop(self):
         with self._lock:
-            if not self.recording:
+            bridge_rec = ros_coord.get_status().get('recording', False) if ros_coord else False
+            if not self.recording and not bridge_rec:
                 return False, 'Not recording'
-            name = self.bag_name
+            name = self.bag_name or (ros_coord.get_status().get('bag_name') if ros_coord else None) or 'unknown'
             mode = self.mode
             if ros_coord is not None:
                 resp = ros_coord.call('stop_record', timeout=5.0)
@@ -407,32 +410,8 @@ def get_cpu_temp() -> float | None:
 
 
 def get_throttle() -> dict:
-    """
-    Parse vcgencmd get_throttled bitmask.
-    Bits 0-3: current flags. Bits 16-19: ever-occurred flags (since boot).
-    """
-    try:
-        result = subprocess.run(
-            ['sudo', 'vcgencmd', 'get_throttled'],
-            capture_output=True, text=True, timeout=2
-        )
-        val = int(result.stdout.strip().split('=')[1], 16)
-        current = {
-            'undervolt':  bool(val & 0x1),
-            'freq_cap':   bool(val & 0x2),
-            'throttled':  bool(val & 0x4),
-            'soft_temp':  bool(val & 0x8),
-        }
-        history = {
-            'undervolt':  bool(val & 0x10000),
-            'freq_cap':   bool(val & 0x20000),
-            'throttled':  bool(val & 0x40000),
-            'soft_temp':  bool(val & 0x80000),
-        }
-        ok = val == 0
-        return {'ok': ok, 'current': current, 'history': history, 'raw': hex(val)}
-    except Exception:
-        return {'ok': None, 'current': {}, 'history': {}, 'raw': None}
+    """vcgencmd is Raspberry Pi specific — not available on Orange Pi 5 Plus."""
+    return {'ok': None, 'current': {}, 'history': {}, 'raw': None}
 
 
 def get_system() -> dict:
@@ -514,26 +493,41 @@ def get_bags() -> list[dict]:
 # ── Sensor Control ───────────────────────────────────────────────────────────
 
 def send_motor_cmd(cmd: str) -> tuple[bool, str]:
-    """Write a single-char motor command directly to the Teensy serial port."""
-    valid = {'x', 'r', 'm', 's', '+', '-'}
-    if cmd not in valid:
-        return False, f'Invalid command: {cmd!r}'
+    """Send motor command to spin_controller via ROS service / topic."""
+    if cmd == 'r':
+        ros_cmd = (
+            f'source {ROS_SETUP} && source {WS_SETUP} && '
+            f'ros2 service call {SPIN_START_SRV} std_srvs/srv/Trigger {{}}'
+        )
+    elif cmd == 'x':
+        ros_cmd = (
+            f'source {ROS_SETUP} && source {WS_SETUP} && '
+            f'ros2 service call {SPIN_STOP_SRV} std_srvs/srv/Trigger {{}}'
+        )
+    else:
+        return False, f'Unsupported command: {cmd!r}'
     try:
-        with serial.Serial(TEENSY_PORT, TEENSY_BAUD, timeout=1, exclusive=False) as ser:
-            ser.write(f'{cmd}\n'.encode())
-        return True, cmd
+        result = subprocess.run(
+            ros_cmd, shell=True, executable='/bin/bash',
+            capture_output=True, text=True, timeout=10
+        )
+        ok = result.returncode == 0
+        out = (result.stdout or result.stderr or '').strip()
+        return ok, out or cmd
+    except subprocess.TimeoutExpired:
+        return False, 'Service call timed out'
     except Exception as e:
         return False, str(e)
 
 
 def restart_all_sensors() -> tuple[bool, str]:
-    """Restart the full hmi_bridge service — kills and relaunches all sensors."""
+    """Restart the hmi_bridge service — kills and relaunches full sensor stack."""
     try:
         subprocess.Popen(
             ['sudo', 'systemctl', 'restart', 'hmi_bridge'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
-        return True, 'hmi_bridge service restarting — sensors back in ~10s'
+        return True, 'hmi_bridge restarting — sensors back in ~15s'
     except Exception as e:
         return False, str(e)
 
@@ -555,15 +549,21 @@ def status():
     # → frontend renders the card as dead, matching real "no data" behavior.
     bridge = ros_coord.get_status() if ros_coord is not None else {}
     hz['Velodyne'] = bridge.get('lidar_raw_hz') if bridge else None
+    # Use hmi_bridge as source of truth for recording state — recorder.recording
+    # can be False if the start_record response timed out while hmi_bridge still
+    # started the bag (motor spin-up adds ~10s before the response arrives).
+    is_recording = bridge.get('recording', recorder.recording) if bridge else recorder.recording
+    rec_duration = bridge.get('rec_duration', 0) if is_recording else 0
+    bag_name = bridge.get('bag_name') or recorder.bag_name
     return jsonify({
         'hz':            hz,
         'encoder_angle': angle_mon.get(),
         'platform_rpm':  vel_mon.get(),
         'disk':          get_disk(),
         'system':        get_system(),
-        'recording':     recorder.recording,
-        'rec_duration':  int(time.monotonic() - recorder._rec_start) if recorder.recording and recorder._rec_start else 0,
-        'bag_name':      recorder.bag_name,
+        'recording':     is_recording,
+        'rec_duration':  rec_duration,
+        'bag_name':      bag_name,
         'mode':          recorder.mode,
         'pending_bag':   recorder.pending_bag,
         'pending_mode':  recorder.pending_mode,
